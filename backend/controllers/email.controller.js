@@ -5,7 +5,7 @@ import {
     validateMxRecords,
     validateSMTPConnection,
     validateSpfRecord,
-    // validateDkimRecord,
+    validateDkimRecord,
     validateDmarcRecord,
     checkDisposableDomain,
     validateDnsblRecords

@@ -1,8 +1,10 @@
 import validator from 'validator';
 import dns from 'dns/promises';
 import { verifyEmail } from '@devmehq/email-validator-js';
+import axios from 'axios';
 
-// Input sanitization: work on a simple email string.
+
+
 export const sanitizeEmail = (email) => {
   if (!email || typeof email !== 'string' || !email.trim()) {
     const error = new Error('Email failed to pass input validation test.');
@@ -87,52 +89,52 @@ export const validateSpfRecord = async (domain) => {
   }
 };
 
-// export const validateDkimRecord = async (domain, selector = 'default') => {
-//     let selectorsToTry = [selector];
-//     if (domain.toLowerCase() === 'gmail.com') {
-//       selectorsToTry = [
-//         "default",
-//         "google",
-//         "google20161025",
-//         "google1234567",
-//         "selector1",
-//         "selector2",
-//         "k1",
-//         "k2",
-//         "ctct1",
-//         "ctct2",
-//         "sm",
-//         "s1",
-//         "s2",
-//         "sig1",
-//         "litesrv",
-//         "zendesk1",
-//         "zendesk2",
-//         "mail",
-//         "email",
-//         "dkim",
-//         "topd"
-//       ];
-//     }
+export const validateDkimRecord = async (domain, selector = 'default') => {
+    let selectorsToTry = [selector];
+    if (domain.toLowerCase() === 'gmail.com') {
+      selectorsToTry = [
+        "default",
+        "google",
+        "google20161025",
+        "google1234567",
+        "selector1",
+        "selector2",
+        "k1",
+        "k2",
+        "ctct1",
+        "ctct2",
+        "sm",
+        "s1",
+        "s2",
+        "sig1",
+        "litesrv",
+        "zendesk1",
+        "zendesk2",
+        "mail",
+        "email",
+        "dkim",
+        "topd"
+      ];
+    }
     
-//     for (const sel of selectorsToTry) {
-//       try {
-//         const dkimDomain = `${sel}._domainkey.${domain}`;
-//         const txtRecords = await dns.resolveTxt(dkimDomain);
-//         const flatRecords = txtRecords.flat();
-//         const dkimRecords = flatRecords.filter(record => record.startsWith('v=DKIM1'));
-//         if (dkimRecords.length) {
-//           return;
-//         }
-//       } catch (e) {
-//         continue;
-//       }
-//     }
+    for (const sel of selectorsToTry) {
+      try {
+        const dkimDomain = `${sel}._domainkey.${domain}`;
+        const txtRecords = await dns.resolveTxt(dkimDomain);
+        const flatRecords = txtRecords.flat();
+        const dkimRecords = flatRecords.filter(record => record.startsWith('v=DKIM1'));
+        if (dkimRecords.length) {
+          return;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
     
-//     const error = new Error('Email failed to pass DKIM record validation test.');
-//     error.step = 'dkimValidation';
-//     throw error;
-//   };
+    const error = new Error('Email failed to pass DKIM record validation test.');
+    error.step = 'dkimValidation';
+    throw error;
+  };
   
 
 export const validateDmarcRecord = async (domain) => {
@@ -153,25 +155,21 @@ export const validateDmarcRecord = async (domain) => {
   }
 };
 
-// Disposable Domain Check – use a local list of known disposable domains.
-const disposableDomains = [
-  "mailinator.com",
-  "10minutemail.com",
-  "tempmail.com",
-  "guerrillamail.com",
-  "discard.email",
-  "yopmail.com"
-];
-
-export const checkDisposableDomain = (domain) => {
-  if (disposableDomains.includes(domain.toLowerCase())) {
-    const error = new Error('Email failed disposable domain validation test.');
+export const checkDisposableDomain = async (domain) => {
+  try {
+    const response = await axios.get(`https://disposable.debounce.io/${domain}`);
+    if (response.data.is_disposable) {
+      const error = new Error('Email failed disposable domain validation test.');
+      error.step = 'disposableDomainValidation';
+      throw error;
+    }
+  } catch (e) {
+    const error = new Error('Error while checking disposable domain.');
     error.step = 'disposableDomainValidation';
     throw error;
   }
 };
 
-// DNSBL (Blacklist) Check – check MX IP addresses against DNSBL zones.
 const dnsblZones = [
   "zen.spamhaus.org",
   "b.barracudacentral.org",
@@ -199,13 +197,11 @@ export const validateDnsblRecords = async (domain) => {
         for (const zone of dnsblZones) {
           const query = `${reversedIP}.${zone}`;
           try {
-            // A successful resolution means the IP is blacklisted.
             await dns.resolve4(query);
             const error = new Error(`Email failed DNSBL validation: IP ${ip} is listed in ${zone}.`);
             error.step = 'dnsblValidation';
             throw error;
           } catch (err) {
-            // ENOTFOUND means not listed; ignore other errors.
             if (err.code !== 'ENOTFOUND') {
               continue;
             }
